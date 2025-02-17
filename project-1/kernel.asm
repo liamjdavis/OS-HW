@@ -320,9 +320,45 @@ _scroll_console_update_offset:
 ### Procedure: default_handler
 
 default_handler:
+	# Preserve registers
+	addi sp, sp, -8
+	sw ra, 4(sp)
+	sw fp, 0(sp)
+	mv fp, sp
+
+	# Print interrupt message
+	la a0, interrupt_msg
+	call print
+
+	# Restore registers
+	lw ra, 4(fp)
+	lw fp, 0(sp)
+	addi sp, sp, 8
 
 	lw		a0,		kernel_error_unmanaged_interrupt
 	halt
+
+
+### Procedure: system call handler
+system_call_handler:
+	# Preserve registers
+	addi sp, sp, -8
+	sw ra, 4(sp)
+	sw fp, 0(sp)
+	mv fp, sp
+
+	# Print system call message
+	la a0, syscall_msg
+	call print
+
+	# Restore registers
+	lw ra, 4(fp)
+	lw fp, 0(sp)
+	addi sp, sp, 8
+
+	lw a0, kernel_error_unmanaged_interrupt
+	halt
+
 ### ================================================================================================================================
 
 
@@ -360,7 +396,13 @@ init_trap_table:
 	sw t0, 24(a0)
 	sw t0, 28(a0)
 	sw t0, 32(a0)
+	
+	# System Call Handler
+	la t0, system_call_handler
 	sw t0, 36(a0)
+
+	# Back to default handler
+	la t0, default_handler
 	sw t0, 40(a0)
 	sw t0, 44(a0)
 	sw t0, 48(a0)
@@ -424,7 +466,24 @@ main_with_console:
 	lw		fp,		0(sp)						# Restore fp
 	addi		sp,		sp,		8				# Pop pfp / ra
 
-	# Callee epilogue: If we reach here, end the hernel.
+	# Test interrupts
+	la a0, interrupt_msg
+	call print
+	
+	lw t0, 0(zero)
+
+	# Should not reach here
+	la a0, interrupt_failed_msg
+	call print
+
+	# Test system call
+	ecall
+
+	# Should not reach here
+	la a0, syscall_failed_msg
+	call print
+
+	# Callee epilogue: If we reach here, end the kernel.
 	lw		a0,		kernel_normal_exit				# Set the result code
 main_return:	
 	lw		ra,		4(fp)						# Restore ra
@@ -505,6 +564,10 @@ banner_msg:		"Fivish kernel v.2025-02-10\n"
 attribution_msg:	"COSC-275 : Systems-II\n"
 halting_msg:		"Halting kernel..."
 initializing_tt_msg:	"Initializing trap table..."
+interrupt_msg: "Interrupt occurred!\n"
+interrupt_failed_msg: "Interrupt failed!\n"
+syscall_msg: "System call occurred!\n"
+syscall_failed_msg: "System call failed!\n"
 done_msg:		"done.\n"
 failed_msg:		"failed!\n"
 blank_line:		"                                                                                "
