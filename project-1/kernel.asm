@@ -336,6 +336,11 @@ default_handler:
 	addi sp, sp, 8
 
 	lw		a0,		kernel_error_unmanaged_interrupt
+
+	# Enter supervisor mode and halt
+    li t0, 0x1
+    csrc md, t1
+    csrs md, t0
 	halt
 
 
@@ -347,16 +352,31 @@ system_call_handler:
 	sw fp, 0(sp)
 	mv fp, sp
 
-	# Print system call message
-	la a0, syscall_msg
+	# Check if EXIT_SYSCALL
+	li t0, EXIT_SYSCALL
+	beq a7, t0, handle_exit
+
+	# Unknown syscall
+	la a0, unknown_syscall_msg
+	call print
+	j syscall_return
+
+handle_exit:
+	la a0, exit_msg
 	call print
 
+syscall_return:
 	# Restore registers
 	lw ra, 4(fp)
 	lw fp, 0(sp)
 	addi sp, sp, 8
 
 	lw a0, kernel_error_unmanaged_interrupt
+
+	# Enter supervisor mode and halt
+    li t0, 0x1
+    csrc md, t1
+    csrs md, t0
 	halt
 
 ### ================================================================================================================================
@@ -466,22 +486,55 @@ main_with_console:
 	lw		fp,		0(sp)						# Restore fp
 	addi		sp,		sp,		8				# Pop pfp / ra
 
-	# Test interrupts
-	la a0, interrupt_msg
-	call print
+	# # Test interrupts
+	# la a0, interrupt_msg
+	# call print
 	
-	lw t0, 0(zero)
+	# lw t0, 0(zero)
 
-	# Should not reach here
-	la a0, interrupt_failed_msg
-	call print
+	# # Should not reach here
+	# la a0, interrupt_failed_msg
+	# call print
 
-	# Test system call
-	ecall
+	# # Test system call
+	# ecall
 
-	# Should not reach here
-	la a0, syscall_failed_msg
-	call print
+	# # Should not reach here
+	# la a0, syscall_failed_msg
+	# call print
+
+	# Find the third ROM
+	lw a0, ROM_device_code
+	li a1, 3
+	call find_device
+	beqz a0, no_user_program
+
+	# Load program into memory
+	lw t0, 4(a0)
+	lw t1, 8(a0)
+
+	# Calculate the size of the ROM
+	sub t2, t1, t0
+
+	# Set program RAM space
+	lw t3, kernel_limit
+	mv t4, t2
+
+	# Copy program to RAM
+	mv a0, t0
+	mv a1, t3
+	mv a2, t2
+	call copy_program
+
+	# Switch to user mode
+	li t0, 2
+	csrs md, t0
+
+	# Jump to the program
+	sw t3, user_program_addr, t6
+
+	# Jump to program with label
+	j user_program
 
 	# Callee epilogue: If we reach here, end the kernel.
 	lw		a0,		kernel_normal_exit				# Set the result code
@@ -489,8 +542,31 @@ main_return:
 	lw		ra,		4(fp)						# Restore ra
 	ret
 ### ================================================================================================================================
-	
 
+no_user_program:
+	la a0, no_program_msg
+	call print
+	lw a0, kernel_normal_exit
+	j main_return
+
+copy_program:
+	# Copy with DMA controller
+	lw t0, device_table_base
+	lw t0, 8(t0)
+	addi t0, t0, -12
+
+	# Set DMA portal
+	sw a0, 0(t0)
+	sw a1, 4(t0)
+	sw a2, 8(t0)
+	ret
+
+user_program:
+	lw t0, user_program_addr
+	jr t0
+
+	# Should not reach here
+	lw a0, kernel_normal_exit
 	
 ### ================================================================================================================================
 	.Numeric
@@ -526,6 +602,9 @@ RAM_device_code:	3
 console_device_code:	4
 block_device_code:	5
 
+## System Calls
+EXIT_SYSCALL: 1
+
 	## Error codes.
 kernel_normal_exit:			0xffff0000
 kernel_error_RAM_not_found:		0xffff0001
@@ -550,6 +629,9 @@ console_base:		0
 console_limit:		0
 kernel_base:		0
 kernel_limit:		0
+
+# Program specific constants
+user_program_addr: 0 
 ### ================================================================================================================================
 
 
@@ -568,6 +650,9 @@ interrupt_msg: "Interrupt occurred!\n"
 interrupt_failed_msg: "Interrupt failed!\n"
 syscall_msg: "System call occurred!\n"
 syscall_failed_msg: "System call failed!\n"
+no_program_msg: "No user program found!\n"
+exit_msg: "Program exited.\n"
+unknown_syscall_msg: "Unknown system call.\n"
 done_msg:		"done.\n"
 failed_msg:		"failed!\n"
 blank_line:		"                                                                                "
