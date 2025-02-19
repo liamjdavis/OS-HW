@@ -520,6 +520,14 @@ main_with_console:
 	lw t3, kernel_limit
 	mv t4, t2
 
+	# Setup user stack
+	add t5, t3, t2
+
+	# Add 4KB for stack
+	li t6, 0x1000
+	add t5, t5, t6
+	mv sp, t5             
+
 	# Copy program to RAM
 	mv a0, t0
 	mv a1, t3
