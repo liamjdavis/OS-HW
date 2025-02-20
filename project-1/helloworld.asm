@@ -1,16 +1,15 @@
-        .Code
+.Code
 start:
         # Print hello message
-        la      a0, hello_msg
-        # call    print          # Use direct call instead of syscall
+        la a0, hello_msg
+        # Print when syscall to print in kernel
 
         # Exit program
-        li      a7, 1         # EXIT_SYSCALL
-        ecall                                          # System call to exit
+        li a7, 1
+        ecall
 
-        # Should not reach here
 loop:   
-        j               loop
+        j loop
 
-        .Text
-hello_msg:      "Hello from user program!\n"
+.Text
+hello_msg: "Hello from user program!\n"
